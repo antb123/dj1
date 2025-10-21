@@ -10,6 +10,7 @@ from django.conf import settings
 import json
 
 from .models import OTP, WhatsAppUser
+from .twilio_service import get_twilio_service
 
 User = get_user_model()
 
@@ -46,9 +47,17 @@ class RequestOTPView(View):
                     expires_at=otp_expiry
                 )
 
-                # TODO: Send OTP via Twilio WhatsApp
-                # For now, log to console
-                print(f"\n[OTP] Phone: {phone_number}, Code: {otp_code}")
+                # Send OTP via Twilio WhatsApp
+                twilio_service = get_twilio_service()
+                result = twilio_service.send_otp(phone_number, otp_code)
+
+                if not result['success']:
+                    # Log error and fallback to console for development
+                    print(f"\n[OTP ERROR] Failed to send to {phone_number}: {result.get('error')}")
+                    print(f"[OTP FALLBACK] Phone: {phone_number}, Code: {otp_code}")
+                    # Still continue to allow testing in development
+                else:
+                    print(f"\n[OTP SENT] WhatsApp message sent to {phone_number}")
 
                 # Store phone in session for next step
                 request.session['phone_number'] = phone_number
@@ -82,8 +91,16 @@ class RequestOTPView(View):
             expires_at=otp_expiry
         )
 
-        # TODO: Send OTP via Twilio WhatsApp
-        print(f"\n[OTP] Phone: {phone_number}, Code: {otp_code}")
+        # Send OTP via Twilio WhatsApp
+        twilio_service = get_twilio_service()
+        result = twilio_service.send_otp(phone_number, otp_code)
+
+        if not result['success']:
+            # Log error and fallback to console for development
+            print(f"\n[OTP ERROR] Failed to send to {phone_number}: {result.get('error')}")
+            print(f"[OTP FALLBACK] Phone: {phone_number}, Code: {otp_code}")
+        else:
+            print(f"\n[OTP SENT] WhatsApp message sent to {phone_number}")
 
         request.session['phone_number'] = phone_number
         return redirect('whatsapp_auth:verify_otp')
