@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - MicroLend{% endblock %}
+{% block title_text %}Dashboard{% endblock %}
+
+{% block extra_css %}
+<style>
+    .dashboard-header {
+        background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+        color: white;
+        padding: 20px;
+        border-radius: 4px;
+        margin-bottom: 20px;
+    }
+    .card {
+        background: white;
+        border: 1px solid #e0e0e0;
+        border-radius: 4px;
+        padding: 15px;
+        margin-bottom: 15px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .card-title { font-weight: bold; margin-bottom: 10px; font-size: 16px; }
+    .card-subtitle { color: #666; font-size: 12px; margin-bottom: 10px; }
+    .stat-value { font-size: 28px; font-weight: bold; color: #007bff; }
+    .stat-label { color: #999; font-size: 13px; }
+    .kyc-badge {
+        display: inline-block;
+        padding: 6px 12px;
+        background: #ffc107;
+        color: white;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: bold;
+    }
+    .kyc-badge.locked { background: #dc3545; }
+    .kyc-badge.level1 { background: #28a745; }
+    .kyc-badge.level2 { background: #17a2b8; }
+    .action-link {
+        display: block;
+        padding: 12px;
+        background: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+        color: #007bff;
+        text-align: center;
+        margin-bottom: 10px;
+        font-weight: 500;
+        text-decoration: none;
+    }
+    .action-link:hover { background: #e9ecef; text-decoration: none; }
+    .borrow-section { background: #f0f7ff; padding: 15px; border-radius: 4px; }
+    .nav-bottom {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: white;
+        border-top: 1px solid #e0e0e0;
+        display: flex;
+        gap: 10px;
+        padding: 10px;
+        max-width: 500px;
+        margin: 0 auto;
+    }
+    .nav-bottom a { flex: 1; padding: 10px; text-align: center; color: #007bff; border-radius: 4px; text-decoration: none; }
+    .nav-bottom a:hover { background: #f5f5f5; }
+    body { padding-bottom: 80px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="dashboard-header">
+    <h2>Welcome, {{ user.first_name|default:user.phone_number }}</h2>
+    <p>Manage your lending account</p>
+</div>
+
+<!-- KYC Status Section -->
+<div class="card">
+    <div class="card-title">KYC Status</div>
+    {% if kyc_level == 0 %}
+        <span class="kyc-badge locked">⚠️ Locked - Complete KYC</span>
+    {% elif kyc_level == 1 %}
+        <span class="kyc-badge level1">✓ Level 1 Verified</span>
+    {% elif kyc_level == 2 %}
+        <span class="kyc-badge level2">✓✓ Level 2 Verified</span>
+    {% endif %}
+    <div style="margin-top: 10px;">
+        <div class="stat-label">Current Level: {{ kyc_level }}/2</div>
+    </div>
+    <a href="#" class="action-link" onclick="alert('KYC form coming soon');">Complete KYC Questionnaire</a>
+</div>
+
+<!-- Score Section -->
+<div class="card">
+    <div class="card-title">Your Score</div>
+    <div class="stat-value">{{ score }}</div>
+    <div class="stat-label">Score determines your borrowing power</div>
+    <a href="#" class="action-link" onclick="alert('Score details coming soon');">View Score Details</a>
+</div>
+
+<!-- Borrowing Section -->
+<div class="card">
+    <div class="card-title">Borrowing Status</div>
+    {% if borrow_limit.is_locked %}
+        <div style="padding: 15px; background: #f8d7da; border-radius: 4px; color: #721c24; margin-bottom: 10px;">
+            <strong>Locked:</strong> Complete KYC Level 1 to unlock borrowing
+        </div>
+    {% else %}
+        <div class="borrow-section">
+            <div style="margin-bottom: 10px;">
+                <div class="stat-label">Available to Borrow</div>
+                <div class="stat-value" style="color: #28a745;">{{ borrow_limit.available_borrow }}</div>
+            </div>
+            <div>
+                <div class="stat-label">Maximum Limit</div>
+                <div style="font-size: 16px; color: #666;">{{ borrow_limit.max_borrow_amount }}</div>
+            </div>
+        </div>
+    {% endif %}
+    <a href="#" class="action-link" onclick="alert('Borrow interface coming soon');">Borrow Money</a>
+</div>
+
+<!-- Recent Transactions -->
+{% if recent_transactions %}
+<div class="card">
+    <div class="card-title">Recent Transactions</div>
+    {% for transaction in recent_transactions %}
+        <div style="padding: 10px; border-bottom: 1px solid #e0e0e0; display: flex; justify-content: space-between;">
+            <div>
+                <div style="font-weight: 500;">{{ transaction.get_status_display }}</div>
+                <div class="stat-label">{{ transaction.created_at|date:"d M Y" }}</div>
+            </div>
+            <div style="text-align: right;">
+                <div style="font-weight: 500;">{{ transaction.amount_debit }}</div>
+            </div>
+        </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- Referral Section -->
+<div class="card">
+    <div class="card-title">Invite Friends</div>
+    <div class="stat-label">You have invited {{ referrals_count }} people</div>
+    <a href="#" class="action-link" onclick="alert('Referral interface coming soon');">Generate Invite Link</a>
+</div>
+
+<!-- Phone Bill Upload -->
+<div class="card">
+    <div class="card-title">Upload Phone Bill</div>
+    <div class="stat-label">Boost your score with phone bill proof</div>
+    <a href="#" class="action-link" onclick="alert('Phone bill upload coming soon');">Upload Bill</a>
+</div>
+
+<!-- Logout -->
+<div class="card">
+    <a href="{% url 'whatsapp_auth:logout' %}" class="action-link" style="color: #dc3545;">Logout</a>
+</div>
+
+<!-- Navigation -->
+<div class="nav-bottom">
+    <a href="{% url 'dashboard:index' %}" style="color: #007bff;">📊 Home</a>
+    <a href="#" onclick="alert('KYC coming soon');" style="color: #999;">✓ KYC</a>
+    <a href="#" onclick="alert('Referral coming soon');" style="color: #999;">👥 Refer</a>
+    <a href="#" onclick="alert('Account coming soon');" style="color: #999;">⚙️ Account</a>
+</div>
+{% endblock %}

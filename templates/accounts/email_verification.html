@@ -1,0 +1,12 @@
+Hello {{ user.first_name|default:user.email }},
+
+Thank you for registering with Document Manager!
+
+Please click the link below to verify your email address:
+
+{{ verification_link }}
+
+If you didn't create an account, please ignore this email.
+
+Best regards,
+Document Manager Team

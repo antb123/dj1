@@ -1,0 +1,6 @@
+Django==5.0.1
+djangorestframework==3.14.0
+Pillow==10.2.0
+python-magic==0.4.27
+python-decouple==3.8
+twilio==9.0.0

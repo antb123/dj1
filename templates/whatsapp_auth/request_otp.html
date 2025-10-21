@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block title %}Login - MicroLend{% endblock %}
+{% block title_text %}Login via WhatsApp{% endblock %}
+
+{% block content %}
+<div class="bg-white mt-20">
+    <form method="post" id="otpForm">
+        {% csrf_token %}
+
+        {% if error %}
+            <div class="alert alert-error">{{ error }}</div>
+        {% endif %}
+
+        <div class="form-group">
+            <label for="phone_number">Phone Number</label>
+            <input type="tel" id="phone_number" name="phone_number" placeholder="+256701234567" required>
+            <p class="text-muted mt-20">Enter your phone number with country code (e.g., +256, +234, +1)</p>
+        </div>
+
+        <button type="submit" class="btn">Send OTP to WhatsApp</button>
+    </form>
+
+    <p class="text-center text-muted mt-20">
+        An OTP code will be sent to your WhatsApp in seconds.
+    </p>
+</div>
+
+<script>
+    document.getElementById('otpForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const button = this.querySelector('button');
+        const originalText = button.textContent;
+        button.disabled = true;
+        button.innerHTML = '<span class="spinner"></span> Sending...';
+
+        try {
+            const response = await fetch('{% url "whatsapp_auth:request_otp" %}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+                },
+                body: JSON.stringify({
+                    phone_number: document.getElementById('phone_number').value
+                })
+            });
+
+            const data = await response.json();
+            if (data.success) {
+                window.location.href = '{% url "whatsapp_auth:verify_otp" %}';
+            } else {
+                alert('Error: ' + data.error);
+                button.disabled = false;
+                button.textContent = originalText;
+            }
+        } catch (error) {
+            alert('Error: ' + error.message);
+            button.disabled = false;
+            button.textContent = originalText;
+        }
+    });
+</script>
+{% endblock %}
