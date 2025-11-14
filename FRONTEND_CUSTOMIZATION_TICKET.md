@@ -1,15 +1,13 @@
 # Frontend Customization Implementation Plan - FreedomPayWallet
 
 ## Overview
-This ticket provides step-by-step instructions to customize colors, logos, and fonts for the Stellar Disbursement Platform Frontend with FreedomPayWallet branding, including integration with Banxa and Mercuryo payment on-ramp providers.
+This ticket provides step-by-step instructions to customize colors, logos, and fonts for the Stellar Disbursement Platform Frontend with FreedomPayWallet branding.
 
 **Repository**: https://github.com/stellar/stellar-disbursement-platform-frontend
 
 **Tech Stack**: React + TypeScript, Vite, SCSS, @stellar/design-system, Docker + Nginx
 
 **Build Output**: `/build` directory → Docker image → Nginx
-
-**Payment On-Ramps**: Banxa, Mercuryo
 
 ---
 
@@ -18,8 +16,6 @@ This ticket provides step-by-step instructions to customize colors, logos, and f
 - [ ] Access to the frontend repository
 - [ ] Node.js 22.x and Yarn installed locally
 - [ ] Docker installed for building and testing
-- [ ] Banxa API credentials (Sandbox and Production)
-- [ ] Mercuryo API credentials (Sandbox and Production)
 - [ ] Custom brand assets prepared:
   - Logo files (SVG, PNG in multiple sizes)
   - Font files (WOFF2 format recommended) or Google Fonts selection
@@ -105,7 +101,7 @@ git clone https://github.com/YOUR-USERNAME/stellar-disbursement-platform-fronten
 cd stellar-disbursement-platform-frontend
 
 # Create a feature branch
-git checkout -b feature/fpw-branding-banxa-mercuryo
+git checkout -b feature/fpw-branding
 
 # Install dependencies
 yarn install
@@ -113,555 +109,9 @@ yarn install
 
 ---
 
-## Phase 2: Payment On-Ramp Integration
+## Phase 2: Font Customization - FreedomPayWallet Fonts
 
-### Step 2.1: Install Banxa SDK
-
-**Banxa** is a compliant fiat-to-crypto payment gateway supporting 40+ countries.
-
-```bash
-# Install Banxa SDK
-yarn add @banxa/web-sdk
-
-# Or use CDN integration
-```
-
-**Create Banxa Service**: `src/services/banxa.service.ts`
-
-```typescript
-import { BanxaSDK } from '@banxa/web-sdk';
-
-interface BanxaConfig {
-  partnerId: string;
-  apiKey: string;
-  sandbox: boolean;
-}
-
-export class BanxaService {
-  private sdk: BanxaSDK;
-
-  constructor(config: BanxaConfig) {
-    this.sdk = new BanxaSDK({
-      partnerId: config.partnerId,
-      apiKey: config.apiKey,
-      isSandbox: config.sandbox,
-    });
-  }
-
-  /**
-   * Create a buy order for cryptocurrency
-   */
-  async createBuyOrder(params: {
-    fiatAmount: number;
-    fiatCurrency: string;
-    cryptoCurrency: string;
-    walletAddress: string;
-    returnUrl: string;
-  }) {
-    try {
-      const order = await this.sdk.createOrder({
-        accountReference: params.walletAddress,
-        fiatType: params.fiatCurrency,
-        coinType: params.cryptoCurrency,
-        fiatAmount: params.fiatAmount,
-        walletAddress: params.walletAddress,
-        returnUrl: params.returnUrl,
-      });
-
-      return order;
-    } catch (error) {
-      console.error('Banxa order creation failed:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Get order status
-   */
-  async getOrderStatus(orderId: string) {
-    try {
-      return await this.sdk.getOrder(orderId);
-    } catch (error) {
-      console.error('Failed to fetch Banxa order:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Get supported currencies
-   */
-  async getSupportedCurrencies() {
-    try {
-      return await this.sdk.getCurrencies();
-    } catch (error) {
-      console.error('Failed to fetch Banxa currencies:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Calculate exchange rate
-   */
-  async getQuote(params: {
-    fiatAmount: number;
-    fiatCurrency: string;
-    cryptoCurrency: string;
-  }) {
-    try {
-      return await this.sdk.getQuote({
-        source: params.fiatCurrency,
-        target: params.cryptoCurrency,
-        sourceAmount: params.fiatAmount,
-      });
-    } catch (error) {
-      console.error('Failed to get Banxa quote:', error);
-      throw error;
-    }
-  }
-}
-
-// Export singleton instance
-export const banxaService = new BanxaService({
-  partnerId: import.meta.env.VITE_BANXA_PARTNER_ID || '',
-  apiKey: import.meta.env.VITE_BANXA_API_KEY || '',
-  sandbox: import.meta.env.VITE_BANXA_SANDBOX === 'true',
-});
-```
-
-### Step 2.2: Install Mercuryo SDK
-
-**Mercuryo** is a crypto on-ramp supporting 100+ countries with credit card, Apple Pay, Google Pay.
-
-```bash
-# Mercuryo uses widget-based integration (no npm package needed)
-```
-
-**Create Mercuryo Service**: `src/services/mercuryo.service.ts`
-
-```typescript
-interface MercuryoConfig {
-  widgetId: string;
-  secret: string;
-  sandbox: boolean;
-}
-
-interface MercuryoWidgetParams {
-  type: 'buy' | 'sell';
-  currency: string;
-  fiatCurrency: string;
-  fiatAmount?: number;
-  address: string;
-  returnUrl?: string;
-  merchantTransactionId?: string;
-}
-
-export class MercuryoService {
-  private config: MercuryoConfig;
-  private baseUrl: string;
-
-  constructor(config: MercuryoConfig) {
-    this.config = config;
-    this.baseUrl = config.sandbox
-      ? 'https://sandbox-exchange.mrcr.io'
-      : 'https://exchange.mercuryo.io';
-  }
-
-  /**
-   * Generate Mercuryo widget URL with signature
-   */
-  generateWidgetUrl(params: MercuryoWidgetParams): string {
-    const queryParams = new URLSearchParams({
-      widget_id: this.config.widgetId,
-      type: params.type,
-      currency: params.currency,
-      fiat_currency: params.fiatCurrency,
-      address: params.address,
-      ...(params.fiatAmount && { fiat_amount: params.fiatAmount.toString() }),
-      ...(params.returnUrl && { return_url: params.returnUrl }),
-      ...(params.merchantTransactionId && {
-        merchant_transaction_id: params.merchantTransactionId
-      }),
-    });
-
-    // Add signature for security (server-side recommended)
-    const signature = this.generateSignature(queryParams.toString());
-    queryParams.append('signature', signature);
-
-    return `${this.baseUrl}/?${queryParams.toString()}`;
-  }
-
-  /**
-   * Open Mercuryo widget in iframe or popup
-   */
-  openWidget(params: MercuryoWidgetParams, mode: 'iframe' | 'popup' = 'iframe') {
-    const url = this.generateWidgetUrl(params);
-
-    if (mode === 'popup') {
-      window.open(
-        url,
-        'MercuryoWidget',
-        'width=420,height=720,location=no,menubar=no'
-      );
-    } else {
-      // Return URL for iframe embedding
-      return url;
-    }
-  }
-
-  /**
-   * Generate HMAC signature for request validation
-   * NOTE: This should be done server-side for security
-   */
-  private generateSignature(data: string): string {
-    // This is a simplified version - use server-side crypto library
-    // For production, send request to backend to generate signature
-    const crypto = require('crypto');
-    return crypto
-      .createHmac('sha256', this.config.secret)
-      .update(data)
-      .digest('hex');
-  }
-
-  /**
-   * Get transaction status
-   */
-  async getTransactionStatus(merchantTransactionId: string) {
-    try {
-      const response = await fetch(
-        `${this.baseUrl}/b2b/api/v1/merchants/transaction/${merchantTransactionId}`,
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            'Mercuryo-Widget-Id': this.config.widgetId,
-          },
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch transaction status');
-      }
-
-      return await response.json();
-    } catch (error) {
-      console.error('Mercuryo transaction status error:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Get supported currencies
-   */
-  async getSupportedCurrencies() {
-    try {
-      const response = await fetch(`${this.baseUrl}/b2b/api/v1/currencies`, {
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch currencies');
-      }
-
-      return await response.json();
-    } catch (error) {
-      console.error('Mercuryo currencies error:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Get exchange rate
-   */
-  async getRate(params: {
-    from: string;
-    to: string;
-    amount: number;
-  }) {
-    try {
-      const response = await fetch(
-        `${this.baseUrl}/b2b/api/v1/rate?from=${params.from}&to=${params.to}&amount=${params.amount}`,
-        {
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch rate');
-      }
-
-      return await response.json();
-    } catch (error) {
-      console.error('Mercuryo rate error:', error);
-      throw error;
-    }
-  }
-}
-
-// Export singleton instance
-export const mercuryoService = new MercuryoService({
-  widgetId: import.meta.env.VITE_MERCURYO_WIDGET_ID || '',
-  secret: import.meta.env.VITE_MERCURYO_SECRET || '',
-  sandbox: import.meta.env.VITE_MERCURYO_SANDBOX === 'true',
-});
-```
-
-### Step 2.3: Create Payment Gateway Selection Component
-
-**Create**: `src/components/PaymentGateway/PaymentGatewaySelector.tsx`
-
-```typescript
-import React, { useState } from 'react';
-import { Button, Select } from '@stellar/design-system';
-import { banxaService } from '@/services/banxa.service';
-import { mercuryoService } from '@/services/mercuryo.service';
-
-type PaymentProvider = 'banxa' | 'mercuryo';
-
-interface PaymentGatewaySelectorProps {
-  walletAddress: string;
-  defaultCurrency?: string;
-  onSuccess?: (provider: PaymentProvider, transactionId: string) => void;
-  onError?: (error: Error) => void;
-}
-
-export const PaymentGatewaySelector: React.FC<PaymentGatewaySelectorProps> = ({
-  walletAddress,
-  defaultCurrency = 'USDC',
-  onSuccess,
-  onError,
-}) => {
-  const [provider, setProvider] = useState<PaymentProvider>('banxa');
-  const [fiatAmount, setFiatAmount] = useState<number>(100);
-  const [fiatCurrency, setFiatCurrency] = useState<string>('USD');
-  const [loading, setLoading] = useState(false);
-
-  const handleBanxaPurchase = async () => {
-    setLoading(true);
-    try {
-      const order = await banxaService.createBuyOrder({
-        fiatAmount,
-        fiatCurrency,
-        cryptoCurrency: defaultCurrency,
-        walletAddress,
-        returnUrl: window.location.origin + '/payment-callback',
-      });
-
-      // Redirect to Banxa checkout
-      window.location.href = order.checkout_url;
-
-      onSuccess?.('banxa', order.order_id);
-    } catch (error) {
-      console.error('Banxa purchase failed:', error);
-      onError?.(error as Error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleMercuryoPurchase = () => {
-    setLoading(true);
-    try {
-      const widgetUrl = mercuryoService.generateWidgetUrl({
-        type: 'buy',
-        currency: defaultCurrency,
-        fiatCurrency,
-        fiatAmount,
-        address: walletAddress,
-        returnUrl: window.location.origin + '/payment-callback',
-        merchantTransactionId: `fpw-${Date.now()}`,
-      });
-
-      // Open in popup or redirect
-      window.open(widgetUrl, '_blank', 'width=420,height=720');
-
-      onSuccess?.('mercuryo', `fpw-${Date.now()}`);
-    } catch (error) {
-      console.error('Mercuryo purchase failed:', error);
-      onError?.(error as Error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handlePurchase = () => {
-    if (provider === 'banxa') {
-      handleBanxaPurchase();
-    } else {
-      handleMercuryoPurchase();
-    }
-  };
-
-  return (
-    <div className="payment-gateway-selector">
-      <h3>Buy Cryptocurrency</h3>
-
-      <div className="form-group">
-        <label>Payment Provider</label>
-        <Select
-          value={provider}
-          onChange={(e) => setProvider(e.target.value as PaymentProvider)}
-        >
-          <option value="banxa">Banxa (40+ countries)</option>
-          <option value="mercuryo">Mercuryo (100+ countries)</option>
-        </Select>
-      </div>
-
-      <div className="form-group">
-        <label>Amount ({fiatCurrency})</label>
-        <input
-          type="number"
-          value={fiatAmount}
-          onChange={(e) => setFiatAmount(Number(e.target.value))}
-          min={10}
-          max={10000}
-        />
-      </div>
-
-      <div className="form-group">
-        <label>Currency</label>
-        <Select
-          value={fiatCurrency}
-          onChange={(e) => setFiatCurrency(e.target.value)}
-        >
-          <option value="USD">USD</option>
-          <option value="EUR">EUR</option>
-          <option value="GBP">GBP</option>
-          <option value="AUD">AUD</option>
-        </Select>
-      </div>
-
-      <div className="wallet-address">
-        <strong>Wallet:</strong> {walletAddress.substring(0, 10)}...
-      </div>
-
-      <Button
-        onClick={handlePurchase}
-        disabled={loading}
-        fullWidth
-      >
-        {loading ? 'Processing...' : `Buy with ${provider === 'banxa' ? 'Banxa' : 'Mercuryo'}`}
-      </Button>
-
-      {provider === 'banxa' && (
-        <p className="provider-info">
-          <small>Banxa supports credit/debit cards, bank transfers, and local payment methods.</small>
-        </p>
-      )}
-
-      {provider === 'mercuryo' && (
-        <p className="provider-info">
-          <small>Mercuryo supports credit cards, Apple Pay, Google Pay, and bank transfers.</small>
-        </p>
-      )}
-    </div>
-  );
-};
-```
-
-### Step 2.4: Environment Variables for Payment Gateways
-
-**File**: Update `.env.example`
-
-```env
-# Banxa Configuration
-VITE_BANXA_PARTNER_ID=your_banxa_partner_id
-VITE_BANXA_API_KEY=your_banxa_api_key
-VITE_BANXA_SANDBOX=true
-
-# Mercuryo Configuration
-VITE_MERCURYO_WIDGET_ID=your_mercuryo_widget_id
-VITE_MERCURYO_SECRET=your_mercuryo_secret
-VITE_MERCURYO_SANDBOX=true
-
-# Application
-VITE_APP_NAME=FreedomPayWallet
-VITE_API_URL=https://api.freedompaywallet.com
-```
-
-**Files modified**:
-- `.env.example` (created if doesn't exist)
-
-### Step 2.5: Payment Callback Handler
-
-**Create**: `src/pages/PaymentCallback.tsx`
-
-```typescript
-import React, { useEffect, useState } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
-import { banxaService } from '@/services/banxa.service';
-import { mercuryoService } from '@/services/mercuryo.service';
-
-export const PaymentCallback: React.FC = () => {
-  const [searchParams] = useSearchParams();
-  const navigate = useNavigate();
-  const [status, setStatus] = useState<'processing' | 'success' | 'error'>('processing');
-  const [message, setMessage] = useState('Processing your payment...');
-
-  useEffect(() => {
-    const handleCallback = async () => {
-      const provider = searchParams.get('provider');
-      const orderId = searchParams.get('order_id');
-      const transactionId = searchParams.get('transaction_id');
-
-      try {
-        if (provider === 'banxa' && orderId) {
-          const order = await banxaService.getOrderStatus(orderId);
-
-          if (order.status === 'completed') {
-            setStatus('success');
-            setMessage('Payment successful! Your crypto will arrive shortly.');
-          } else if (order.status === 'failed') {
-            setStatus('error');
-            setMessage('Payment failed. Please try again.');
-          }
-        } else if (provider === 'mercuryo' && transactionId) {
-          const transaction = await mercuryoService.getTransactionStatus(transactionId);
-
-          if (transaction.status === 'paid') {
-            setStatus('success');
-            setMessage('Payment successful! Your crypto will arrive shortly.');
-          } else if (transaction.status === 'failed') {
-            setStatus('error');
-            setMessage('Payment failed. Please try again.');
-          }
-        }
-
-        // Redirect to wallet after 3 seconds
-        setTimeout(() => {
-          navigate('/wallet');
-        }, 3000);
-      } catch (error) {
-        console.error('Payment callback error:', error);
-        setStatus('error');
-        setMessage('Error processing payment callback.');
-      }
-    };
-
-    handleCallback();
-  }, [searchParams, navigate]);
-
-  return (
-    <div className="payment-callback">
-      <div className={`status-icon ${status}`}>
-        {status === 'processing' && '⏳'}
-        {status === 'success' && '✅'}
-        {status === 'error' && '❌'}
-      </div>
-      <h2>{message}</h2>
-      <p>Redirecting to wallet...</p>
-    </div>
-  );
-};
-```
-
----
-
-## Phase 3: Font Customization - FreedomPayWallet Fonts
-
-### Step 3.1: Update index.html with Google Fonts
+### Step 2.1: Update index.html with Google Fonts
 
 **File**: [`index.html`](https://github.com/stellar/stellar-disbursement-platform-frontend/blob/main/index.html)
 
@@ -712,7 +162,7 @@ export const PaymentCallback: React.FC = () => {
 **Files modified**:
 - [`index.html`](https://github.com/stellar/stellar-disbursement-platform-frontend/blob/main/index.html)
 
-### Step 3.2: Override Design System Font Variables
+### Step 2.2: Override Design System Font Variables
 
 **File**: [`src/styles/styles.scss`](https://github.com/stellar/stellar-disbursement-platform-frontend/blob/main/src/styles/styles.scss)
 
@@ -761,9 +211,9 @@ h1, h2, h3, h4, h5, h6, .heading {
 
 ---
 
-## Phase 4: Logo Customization - FreedomPayWallet
+## Phase 3: Logo Customization - FreedomPayWallet
 
-### Step 4.1: Update PWA Manifest with FreedomPayWallet Branding
+### Step 3.1: Update PWA Manifest with FreedomPayWallet Branding
 
 **File**: [`public/manifest.json`](https://github.com/stellar/stellar-disbursement-platform-frontend/blob/main/public/manifest.json)
 
@@ -789,14 +239,14 @@ h1, h2, h3, h4, h5, h6, .heading {
   "display": "standalone",
   "theme_color": "#YOUR_BRAND_COLOR",
   "background_color": "#ffffff",
-  "description": "FreedomPayWallet - Your gateway to secure cryptocurrency transactions with Banxa and Mercuryo integration"
+  "description": "FreedomPayWallet - Your gateway to secure cryptocurrency transactions"
 }
 ```
 
 **Files modified**:
 - [`public/manifest.json`](https://github.com/stellar/stellar-disbursement-platform-frontend/blob/main/public/manifest.json)
 
-### Step 4.2: Create Logo Component with FreedomPayWallet Logo
+### Step 3.2: Create Logo Component with FreedomPayWallet Logo
 
 **File**: Create `src/components/Logo.tsx`
 
@@ -841,9 +291,9 @@ export default Logo;
 
 ---
 
-## Phase 5: Color and Theme Customization
+## Phase 4: Color and Theme Customization
 
-### Step 5.1: Override Design System Color Variables
+### Step 4.1: Override Design System Color Variables
 
 **File**: [`src/styles/styles.scss`](https://github.com/stellar/stellar-disbursement-platform-frontend/blob/main/src/styles/styles.scss)
 
@@ -907,18 +357,142 @@ export default Logo;
 
 ---
 
+## Phase 5: Forward Compatibility Setup
+
+### Step 5.1: Create Override Pattern
+
+To ensure forward compatibility with Stellar Design System updates, create a dedicated override file:
+
+**File**: Create `src/styles/brand-overrides.scss`
+
+```scss
+// ============================================
+// BRAND OVERRIDES - FreedomPayWallet
+// This file contains all custom branding that overrides
+// the Stellar Design System defaults.
+//
+// When updating @stellar/design-system, review this file
+// to ensure overrides still work as expected.
+// ============================================
+
+:root {
+  // Import from brand configuration
+  // Fonts
+  --sds-ff-base: var(--brand-font-base);
+  --sds-ff-monospace: var(--brand-font-mono);
+
+  // Colors
+  --sds-clr-primary: var(--brand-color-primary);
+  // ... other overrides
+}
+
+// Brand-specific custom properties
+:root {
+  // Define brand tokens
+  --brand-font-base: 'Inter', -apple-system, sans-serif;
+  --brand-font-heading: 'Plus Jakarta Sans', 'Inter', sans-serif;
+  --brand-font-mono: 'Fira Code', 'Inconsolata', monospace;
+
+  --brand-color-primary: #YOUR_COLOR;
+  --brand-color-success: #YOUR_SUCCESS;
+  --brand-color-error: #YOUR_ERROR;
+  --brand-color-warning: #YOUR_WARNING;
+  --brand-color-info: #YOUR_INFO;
+}
+```
+
+**File**: Update [`src/styles/styles.scss`](https://github.com/stellar/stellar-disbursement-platform-frontend/blob/main/src/styles/styles.scss)
+
+```scss
+@use "./styles-utils.scss" as *;
+@use "./brand-overrides.scss"; // ← Import brand overrides
+
+// Rest of the file...
+```
+
+**Files created**:
+- `src/styles/brand-overrides.scss`
+
+**Files modified**:
+- [`src/styles/styles.scss`](https://github.com/stellar/stellar-disbursement-platform-frontend/blob/main/src/styles/styles.scss)
+
+### Step 5.2: Add Git Attributes for Merge Strategy
+
+**File**: Create `.gitattributes` in repository root
+
+```
+# Custom branding files - prefer ours in merges
+src/styles/brand-overrides.scss merge=ours
+src/assets/app-logo.* merge=ours
+src/components/Logo.tsx merge=ours
+public/favicon.ico merge=binary
+public/icon.svg merge=ours
+public/apple-touch-icon.png merge=binary
+public/icon-*.png merge=binary
+public/manifest.json merge=ours
+CUSTOMIZATION_NOTES.md merge=ours
+
+# Standard text files
+*.md text
+*.scss text
+*.tsx text
+*.ts text
+*.json text
+```
+
+**Files created**:
+- `.gitattributes` (new file)
+
+### Step 5.3: Configure Dependabot to Monitor Design System
+
+**File**: Create `.github/dependabot.yml` (if it doesn't exist)
+
+```yaml
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+    # Group design system updates separately
+    groups:
+      stellar-design-system:
+        patterns:
+          - "@stellar/design-system"
+    # Don't auto-merge design system updates
+    open-pull-requests-limit: 10
+```
+
+**Files created or modified**:
+- [`.github/dependabot.yml`](https://github.com/stellar/stellar-disbursement-platform-frontend/tree/main/.github)
+
+---
+
 ## Phase 6: Docker Build Configuration
 
 ### Step 6.1: Verify Dockerfile Handles Assets
 
 **File**: [`Dockerfile`](https://github.com/stellar/stellar-disbursement-platform-frontend/blob/main/Dockerfile)
 
-**Current multi-stage build already handles**:
-- Copies all source files
+**No changes needed** - The current multi-stage build already:
+- Copies all source files (including `public/` and `src/assets/`)
 - Runs `yarn build` which processes assets via Vite
-- Copies `/app/build/` to nginx
+- Copies the `/app/build/` directory to nginx
 
-**No changes needed** to Dockerfile for basic asset handling.
+**Verify the build process**:
+```dockerfile
+# Build stage already includes:
+COPY . .                          # ← Copies all source including custom assets
+RUN yarn build                    # ← Vite processes fonts, logos, styles
+
+# Runtime stage already includes:
+COPY --from=build /app/build/ /usr/share/nginx/html/  # ← Serves built assets
+```
+
+**Files verified** (no modifications needed):
+- [`Dockerfile`](https://github.com/stellar/stellar-disbursement-platform-frontend/blob/main/Dockerfile)
 
 ### Step 6.2: Enhanced Nginx Configuration (Optional)
 
@@ -976,6 +550,31 @@ server {
 **Files optionally created**:
 - `nginx-fpw.conf`
 
+### Step 6.3: Configure Environment Variables for Branding
+
+**File**: Create `.env.example` for documentation
+
+```env
+# Application Configuration
+VITE_APP_NAME=FreedomPayWallet
+VITE_COMPANY_NAME=FreedomPay
+VITE_API_URL=https://api.freedompaywallet.com
+VITE_HORIZON_URL=https://horizon.stellar.org
+
+# Branding
+VITE_PRIMARY_COLOR=#YOUR_COLOR
+
+# Feature Flags
+VITE_ENABLE_SINGLE_TENANT_MODE=false
+VITE_USE_SSO=false
+
+# Analytics (optional)
+VITE_GA_TRACKING_ID=
+```
+
+**Files created**:
+- `.env.example`
+
 ---
 
 ## Phase 7: Build and Test
@@ -988,7 +587,7 @@ yarn install
 
 # Set up environment variables
 cp .env.example .env
-# Edit .env with your Banxa and Mercuryo credentials
+# Edit .env with your configuration
 
 # Start development server
 yarn dev
@@ -998,28 +597,23 @@ yarn dev
 # ✓ FreedomPayWallet logo loads
 # ✓ Inter and Plus Jakarta Sans fonts render
 # ✓ Colors match brand palette
-# ✓ Banxa integration works
-# ✓ Mercuryo integration works
+# ✓ Favicons display correctly
 ```
 
-### Step 7.2: Test Payment Gateway Integration
+### Step 7.2: Test Production Build Locally
 
 ```bash
-# Test Banxa (sandbox)
-# 1. Navigate to buy crypto page
-# 2. Select Banxa provider
-# 3. Enter amount and click "Buy"
-# 4. Verify redirect to Banxa sandbox checkout
-# 5. Complete test transaction
-# 6. Verify callback handling
+# Build for production
+yarn build
 
-# Test Mercuryo (sandbox)
-# 1. Navigate to buy crypto page
-# 2. Select Mercuryo provider
-# 3. Enter amount and click "Buy"
-# 4. Verify Mercuryo widget opens
-# 5. Complete test transaction
-# 6. Verify callback handling
+# Preview production build
+yarn preview
+
+# Verify:
+# - All assets are in build/ directory
+# - Fonts are in build/assets/
+# - Logos are properly referenced
+# - Styles are compiled correctly
 ```
 
 ### Step 7.3: Build Docker Image
@@ -1036,11 +630,7 @@ docker images | grep fpw-frontend
 
 ```bash
 # Run container
-docker run -d -p 8080:80 \
-  -e VITE_BANXA_PARTNER_ID=your_id \
-  -e VITE_MERCURYO_WIDGET_ID=your_widget_id \
-  --name fpw-frontend-test \
-  fpw-frontend:latest
+docker run -d -p 8080:80 --name fpw-frontend-test fpw-frontend:latest
 
 # Test in browser
 open http://localhost:8080
@@ -1049,12 +639,27 @@ open http://localhost:8080
 # ✓ Application loads with FreedomPayWallet branding
 # ✓ Fonts render correctly (Inter, Plus Jakarta Sans)
 # ✓ Logo displays properly
-# ✓ Payment gateways functional
 # ✓ All routes work
 
 # Stop and remove
 docker stop fpw-frontend-test
 docker rm fpw-frontend-test
+```
+
+### Step 7.5: Validate Assets in Built Container
+
+```bash
+# Run container with shell access
+docker run -it --rm fpw-frontend:latest sh
+
+# Inside container, verify assets exist:
+ls -la /usr/share/nginx/html/
+ls -la /usr/share/nginx/html/assets/
+
+# Verify key files:
+# - index.html
+# - manifest.json
+# - assets/ directory with hashed files
 ```
 
 ---
@@ -1065,30 +670,240 @@ docker rm fpw-frontend-test
 
 ```env
 # Production .env
-VITE_BANXA_PARTNER_ID=production_partner_id
-VITE_BANXA_API_KEY=production_api_key
-VITE_BANXA_SANDBOX=false
-
-VITE_MERCURYO_WIDGET_ID=production_widget_id
-VITE_MERCURYO_SECRET=production_secret
-VITE_MERCURYO_SANDBOX=false
-
 VITE_APP_NAME=FreedomPayWallet
 VITE_API_URL=https://api.freedompaywallet.com
 VITE_HORIZON_URL=https://horizon.stellar.org
 ```
 
-### Step 8.2: Deploy to Production
+### Step 8.2: Tag and Push Docker Image
 
 ```bash
-# Tag Docker image
+# Tag for your registry
 docker tag fpw-frontend:latest your-registry.com/fpw-frontend:v1.0.0
+docker tag fpw-frontend:latest your-registry.com/fpw-frontend:latest
 
 # Push to registry
 docker push your-registry.com/fpw-frontend:v1.0.0
+docker push your-registry.com/fpw-frontend:latest
+```
 
-# Deploy with docker-compose or kubernetes
+### Step 8.3: Update Docker Compose (If Applicable)
+
+**File**: Update your deployment's `docker-compose.yml`
+
+```yaml
+version: '3.8'
+
+services:
+  frontend:
+    image: your-registry.com/fpw-frontend:latest
+    ports:
+      - "80:80"
+    environment:
+      - VITE_API_URL=${API_URL}
+    restart: unless-stopped
+    networks:
+      - sdp-network
+
+networks:
+  sdp-network:
+    driver: bridge
+```
+
+### Step 8.4: Deploy to Production
+
+```bash
+# Pull latest image
+docker-compose pull frontend
+
+# Restart with new image
 docker-compose up -d frontend
+
+# Verify deployment
+docker-compose ps
+docker-compose logs frontend
+```
+
+---
+
+## Phase 9: Validation and QA
+
+### Step 9.1: Cross-Browser Testing
+
+Test on:
+- [ ] Chrome/Chromium (latest)
+- [ ] Firefox (latest)
+- [ ] Safari (latest)
+- [ ] Edge (latest)
+- [ ] Mobile Safari (iOS)
+- [ ] Chrome Mobile (Android)
+
+Verify:
+- [ ] Fonts load and render correctly
+- [ ] Logo displays at correct sizes
+- [ ] Colors match brand palette
+- [ ] Favicon shows in browser tab
+- [ ] PWA install prompt works (mobile)
+
+### Step 9.2: Performance Testing
+
+```bash
+# Use Lighthouse in Chrome DevTools
+# Target scores:
+# - Performance: >90
+# - Accessibility: >90
+# - Best Practices: >90
+# - SEO: >90
+
+# Check font loading performance
+# - Fonts should load with font-display: swap
+# - No FOIT (Flash of Invisible Text)
+# - No layout shift from font loading
+```
+
+### Step 9.3: Accessibility Testing
+
+- [ ] Color contrast meets WCAG 2.1 AA (4.5:1 for normal text)
+- [ ] Logo alt text is descriptive
+- [ ] Text remains readable with custom fonts
+- [ ] No accessibility regressions from customization
+
+### Step 9.4: PWA Testing
+
+```bash
+# Chrome DevTools → Application tab
+# Verify:
+# - Manifest loads correctly
+# - Icons display in all sizes
+# - Theme color is applied
+# - App can be installed
+# - Service worker works (if applicable)
+```
+
+---
+
+## Phase 10: Documentation and Handoff
+
+### Step 10.1: Document Customizations
+
+**File**: Create `CUSTOMIZATION_NOTES.md`
+
+```markdown
+# FreedomPayWallet Brand Customization Notes
+
+This document tracks all branding customizations made to this fork of the Stellar Disbursement Platform Frontend.
+
+## Customized Files
+
+### Fonts
+- `src/styles/styles.scss` - Font variable overrides
+- `src/styles/brand-overrides.scss` - Centralized brand overrides
+- `index.html` - Google Fonts imports (Inter, Plus Jakarta Sans)
+
+### Logos
+- `src/components/Logo.tsx` - Logo component
+- `public/manifest.json` - PWA metadata
+- `index.html` - Favicon references
+
+### Colors
+- `src/styles/styles.scss` - Color variable overrides
+- `src/styles/brand-overrides.scss` - Brand color tokens
+
+### Metadata
+- `index.html` - Title, description, theme color
+- `public/manifest.json` - App name, description, theme
+
+## Brand Assets
+
+### Fonts
+- Primary: Inter (400, 600)
+- Headings: Plus Jakarta Sans (600)
+- Source: Google Fonts
+
+### Logos
+- Main: https://freedompaywallet.com/wp-content/uploads/2025/05/FPW_WHITE_NEW_LOGO.png
+- Favicons: Multiple sizes from freedompaywallet.com
+
+### Colors
+- Primary: #______
+- Success: #16A34A
+- Error: #DC2626
+- Warning: #F59E0B
+- Info: #2563EB
+
+## Forward Compatibility Strategy
+
+All customizations use CSS custom property overrides, allowing the underlying Stellar Design System to be updated without conflicts.
+
+### Merging Upstream Changes
+
+```bash
+git remote add upstream https://github.com/stellar/stellar-disbursement-platform-frontend.git
+git fetch upstream
+git merge upstream/main
+# Resolve conflicts, prioritizing our branding customizations
+```
+
+## Last Updated
+[Date] - Initial FreedomPayWallet branding implementation
+```
+
+**Files created**:
+- `CUSTOMIZATION_NOTES.md`
+
+### Step 10.2: Create Maintenance Checklist
+
+**File**: Create `MAINTENANCE.md`
+
+```markdown
+# Maintenance Checklist
+
+## Monthly Tasks
+- [ ] Check for @stellar/design-system updates
+- [ ] Review dependabot PRs
+- [ ] Test branding on latest browsers
+
+## Quarterly Tasks
+- [ ] Merge upstream changes from stellar/stellar-disbursement-platform-frontend
+- [ ] Review and update color overrides if needed
+- [ ] Verify font loading performance
+- [ ] Update Docker base images
+
+## Annual Tasks
+- [ ] Review and refresh brand assets
+- [ ] Audit accessibility compliance
+- [ ] Performance audit
+- [ ] Review font licenses
+
+## Updating Design System
+
+When updating @stellar/design-system:
+
+1. Check release notes for breaking changes
+2. Test locally: `yarn upgrade @stellar/design-system`
+3. Review `src/styles/brand-overrides.scss` for conflicts
+4. Test all pages visually
+5. Run full test suite
+6. Build Docker image and test
+7. Deploy to staging first
+```
+
+**Files created**:
+- `MAINTENANCE.md`
+
+### Step 10.3: Version and Tag
+
+```bash
+# Commit all changes
+git add .
+git commit -m "feat: implement FreedomPayWallet branding (fonts, logos, colors)"
+
+# Create annotated tag
+git tag -a v1.0.0-fpw -m "FreedomPayWallet branded version with custom fonts, logos, and colors"
+
+# Push commits and tags
+git push origin feature/fpw-branding
+git push origin v1.0.0-fpw
 ```
 
 ---
@@ -1096,55 +911,105 @@ docker-compose up -d frontend
 ## Summary of Modified Files
 
 ### Created Files
-- [ ] `src/services/banxa.service.ts` - Banxa SDK integration
-- [ ] `src/services/mercuryo.service.ts` - Mercuryo widget integration
-- [ ] `src/components/PaymentGateway/PaymentGatewaySelector.tsx` - Payment UI
-- [ ] `src/pages/PaymentCallback.tsx` - Payment callback handler
 - [ ] `src/components/Logo.tsx` - FreedomPayWallet logo component
-- [ ] `.env.example` - Environment configuration template
-- [ ] `nginx-fpw.conf` - Enhanced nginx configuration (optional)
-- [ ] `CUSTOMIZATION_NOTES.md` - Documentation
-- [ ] `FRONTEND_CUSTOMIZATION_TICKET.md` - This document
+- [ ] `src/styles/brand-overrides.scss` - Centralized overrides
+- [ ] `CUSTOMIZATION_NOTES.md` - Customization documentation
+- [ ] `MAINTENANCE.md` - Maintenance procedures
+- [ ] `.env.example` - Environment variable template
+- [ ] `.gitattributes` - Merge strategy for brand files
+- [ ] `nginx-fpw.conf` - Enhanced nginx config (optional)
 
 ### Modified Files
-- [ ] [`index.html`](https://github.com/stellar/stellar-disbursement-platform-frontend/blob/main/index.html) - FPW fonts, logos, meta tags
 - [ ] [`src/styles/styles.scss`](https://github.com/stellar/stellar-disbursement-platform-frontend/blob/main/src/styles/styles.scss) - Font and color overrides
+- [ ] [`index.html`](https://github.com/stellar/stellar-disbursement-platform-frontend/blob/main/index.html) - FPW fonts, logos, meta tags
 - [ ] [`public/manifest.json`](https://github.com/stellar/stellar-disbursement-platform-frontend/blob/main/public/manifest.json) - App metadata
-- [ ] `package.json` - Add @banxa/web-sdk dependency
-- [ ] `src/App.tsx` - Add PaymentCallback route
-- [ ] Navigation components - Add "Buy Crypto" link
+- [ ] `README.md` - Add customization section
 
 ---
 
-## Integration Checklist
+## Forward Compatibility Strategy
 
-### Banxa Integration
-- [ ] Obtain Banxa partner ID and API key
-- [ ] Configure sandbox environment
-- [ ] Test buy flow in sandbox
-- [ ] Implement order status polling
-- [ ] Handle webhooks (optional)
-- [ ] Test production credentials
-- [ ] Go live
+### Design Principles
 
-### Mercuryo Integration
-- [ ] Obtain Mercuryo widget ID
-- [ ] Configure sandbox environment
-- [ ] Test widget embedding
-- [ ] Test buy flow in sandbox
-- [ ] Implement transaction status checking
-- [ ] Server-side signature generation
-- [ ] Test production credentials
-- [ ] Go live
+1. **CSS Custom Property Overrides**: All styling changes use CSS variable overrides rather than modifying component styles directly
+2. **Separate Override Files**: Brand customizations are isolated in dedicated files
+3. **Git Attributes**: Merge strategy preserves brand files during upstream updates
+4. **Documentation**: All changes are documented for future maintenance
+5. **Minimal Core Changes**: Only essential files are modified
 
-### FreedomPayWallet Branding
-- [ ] Logo displays correctly in header
-- [ ] Favicons load on all devices
-- [ ] Inter font loads and renders
-- [ ] Plus Jakarta Sans loads for headings
-- [ ] Colors match brand palette
-- [ ] PWA manifest correct
-- [ ] Mobile responsiveness verified
+### Merging Upstream Updates
+
+```bash
+# Add upstream remote (one time)
+git remote add upstream https://github.com/stellar/stellar-disbursement-platform-frontend.git
+
+# Fetch upstream changes
+git fetch upstream
+
+# Merge upstream main
+git checkout main
+git merge upstream/main
+
+# Resolve conflicts
+# - For brand files: keep "ours" (your changes)
+# - For core files: review carefully, preserve brand overrides
+
+# Test after merge
+yarn install
+yarn build
+docker build -t fpw-frontend:test .
+docker run -d -p 8080:80 fpw-frontend:test
+# Verify branding still works
+
+# If tests pass
+git push origin main
+```
+
+### Safe Update Process
+
+1. Create update branch: `git checkout -b update/upstream-YYYY-MM-DD`
+2. Merge upstream: `git merge upstream/main`
+3. Resolve conflicts (prioritize brand files)
+4. Test locally: `yarn dev`
+5. Test build: `yarn build && yarn preview`
+6. Test Docker: Build and run container
+7. QA all branding elements
+8. Merge to main only after full validation
+
+---
+
+## Estimated Timeline
+
+| Phase | Estimated Time | Dependencies |
+|-------|---------------|--------------|
+| 1. Preparation | 2-4 hours | Asset creation |
+| 2. Font Customization | 1-2 hours | Phase 1 |
+| 3. Logo Customization | 1-2 hours | Phase 1 |
+| 4. Color Customization | 1-2 hours | - |
+| 5. Forward Compatibility | 1 hour | - |
+| 6. Docker Configuration | 1 hour | - |
+| 7. Build and Test | 2-3 hours | Phases 2-6 |
+| 8. Deployment | 1-2 hours | Phase 7, infrastructure |
+| 9. Validation & QA | 2-4 hours | Phase 8 |
+| 10. Documentation | 1-2 hours | All phases |
+| **Total** | **13-23 hours** | - |
+
+---
+
+## Support and Resources
+
+- **Stellar Design System**: https://github.com/stellar/stellar-design-system
+- **Vite Documentation**: https://vitejs.dev/
+- **Docker Documentation**: https://docs.docker.com/
+- **WCAG Guidelines**: https://www.w3.org/WAI/WCAG21/quickref/
+- **Google Fonts**: https://fonts.google.com/
+- **Lighthouse**: https://developers.google.com/web/tools/lighthouse
+
+### FreedomPayWallet Resources
+- **Website**: https://freedompaywallet.com
+- **Logo Assets**: See Step 1.1
+- **Fonts**: Google Fonts (Inter, Plus Jakarta Sans)
+- **Custom CSS**: https://freedompaywallet.com/wp-content/uploads/elementor/css/post-9123.css
 
 ---
 
@@ -1152,39 +1017,18 @@ docker-compose up -d frontend
 
 - [ ] FreedomPayWallet logo displays in all sizes
 - [ ] Inter (400, 600) and Plus Jakarta Sans (600) fonts load
-- [ ] Banxa integration functional (sandbox and production)
-- [ ] Mercuryo integration functional (sandbox and production)
-- [ ] Payment callback handling works
-- [ ] Transaction status tracking works
+- [ ] Colors match brand palette throughout application
+- [ ] Favicon and PWA icons match brand
+- [ ] PWA manifest reflects custom branding
 - [ ] Docker image builds successfully
-- [ ] Application runs in Docker container
-- [ ] All payment flows tested end-to-end
-- [ ] Performance scores >90 (Lighthouse)
+- [ ] Application runs correctly in Docker container
+- [ ] All routes work (SPA routing intact)
+- [ ] Performance scores remain high (Lighthouse >90)
 - [ ] Accessibility maintained (WCAG 2.1 AA)
-- [ ] Cross-browser compatibility verified
-- [ ] Production deployment successful
-
----
-
-## Resources
-
-### Banxa
-- **Documentation**: https://docs.banxa.com/
-- **SDK GitHub**: https://github.com/banxa/banxa-web-sdk
-- **Sandbox**: https://checkout.banxa.com/sandbox
-- **Support**: support@banxa.com
-
-### Mercuryo
-- **Documentation**: https://help.mercuryo.io/en/
-- **Widget Guide**: https://help.mercuryo.io/en/articles/4519473-mercuryo-widget
-- **Sandbox**: https://sandbox-exchange.mrcr.io
-- **Support**: support@mercuryo.io
-
-### FreedomPayWallet
-- **Website**: https://freedompaywallet.com
-- **Logo Assets**: See Step 1.1
-- **Fonts**: Google Fonts (Inter, Plus Jakarta Sans)
-- **CSS**: https://freedompaywallet.com/wp-content/uploads/elementor/css/post-9123.css
+- [ ] Documentation complete
+- [ ] Forward compatibility strategy implemented
+- [ ] QA passed on all target browsers
+- [ ] Deployed to production successfully
 
 ---
 
